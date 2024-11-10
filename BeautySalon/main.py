@@ -107,10 +107,10 @@ def main(page: ft.Page):
             border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.RED_100))
         )
     
-    # 设置路由变化监听
+
     page.on_route_change = route_change
     
-    # 初始化显示首页
+
     page.go("/")
 
 if __name__ == "__main__":
