@@ -3,57 +3,226 @@ from datetime import datetime, timedelta
 import calendar
 
 def main(page: ft.Page):
+    # Initial setup
+    page.route_data = {
+        "service": "Wash & Dry",
+        "duration": "1 hr",
+        "location": "San Francisco"
+    }
+    
     page.title = "Booking Application"
-    page.padding = 10
-    page.window_width = 1000
-    page.window_height = 800
+    page.padding = 20
+    page.window_width = 1200
+    page.window_height = 700
     page.window_resizable = False
     
-    # Track current display date separately from today's date
     current_display_date = datetime.now()
+    today = datetime.now().date()
+    selected_date = None
+    
+    booking_details = {
+        "service": page.route_data.get("service", ""),
+        "duration": page.route_data.get("duration", ""),
+        "location": page.route_data.get("location", ""),
+        "date": "",
+        "time": ""
+    }
     
     selected_date_text = ft.Text(
-        "Saturday, November 9",
+        "Select a date",
         size=14,
         weight=ft.FontWeight.W_500
     )
-    
-    # Add state for selected time
-    selected_time = ft.Text(
-        "Select a time",
-        size=14,
-        weight=ft.FontWeight.W_500
+
+    month_text = ft.Text(
+        datetime.now().strftime("%B %Y"),
+        size=24,
+        weight=ft.FontWeight.W_300,
+        color="#000000"
     )
-    
-    def date_clicked(e, day):
-        clicked_date = datetime(current_display_date.year, current_display_date.month, day)
-        selected_date_text.value = clicked_date.strftime("%A, %B %d")
-        # Reset selected time when date changes
-        selected_time.value = "Select a time"
-        # Reset all time slot colors
-        for slot in time_slots_grid.controls:
-            for container in slot.controls:
-                container.bgcolor = "white"
-                container.content.color = "black"
+
+    calendar_column = ft.Column(spacing=5)
+
+    # Function definitions
+    def close_dialog(e):
+        dialog.open = False
         page.update()
+
+    def navigate_to_next_page(e):
+        dialog_content = ft.Column(
+            controls=[
+                ft.Text(f"Service: {booking_details['service']}"),
+                ft.Text(f"Duration: {booking_details['duration']}"),
+                ft.Text(f"Location: {booking_details['location']}"),
+                ft.Text(f"Date: {booking_details['date']}"),
+                ft.Text(f"Time: {booking_details['time']}"),
+            ],
+            tight=True,
+        )
+        
+        global dialog
+        dialog = ft.AlertDialog(
+            title=ft.Text("Proceeding to Next Step"),
+            content=dialog_content,
+            actions=[
+                ft.TextButton("OK", on_click=close_dialog),
+            ],
+        )
+        
+        page.dialog = dialog
+        dialog.open = True
+        page.update()
+
+    def date_clicked(e, day):
+        nonlocal selected_date
+        clicked_date = datetime(current_display_date.year, current_display_date.month, day)
+        if clicked_date.date() >= today:
+            selected_date = clicked_date
+            selected_date_text.value = clicked_date.strftime("%A, %B %d")
+            booking_details["date"] = clicked_date.strftime("%A, %B %d")
+            update_calendar()
+            page.update()
+
+    def update_calendar():
+        while len(calendar_column.controls) > 2:
+            calendar_column.controls.pop()
+
+        cal = calendar.monthcalendar(current_display_date.year, current_display_date.month)
+        month_text.value = current_display_date.strftime("%B %Y")
+        
+        for week in cal:
+            week_row = ft.Row(spacing=0)
+            for day in week:
+                if day == 0:
+                    day_cell = ft.Container(
+                        width=60,
+                        height=60,
+                        padding=10,
+                    )
+                else:
+                    date_to_check = datetime(current_display_date.year, current_display_date.month, day).date()
+                    is_past = date_to_check < today
+                    is_selected = (selected_date and 
+                                 selected_date.year == current_display_date.year and
+                                 selected_date.month == current_display_date.month and
+                                 selected_date.day == day)
+                    is_available = date_to_check >= today
+                    
+                    dot = ft.Container(
+                        width=4,
+                        height=4,
+                        bgcolor="#000000" if is_available else "transparent",
+                        border_radius=2,
+                        visible=is_available and not is_selected
+                    )
+                    
+                    day_content = ft.Column(
+                        controls=[
+                            ft.Text(
+                                str(day),
+                                size=16,
+                                weight=ft.FontWeight.W_400,
+                                color="#000000" if is_available else "#CCCCCC"
+                            ),
+                            dot
+                        ],
+                        spacing=2,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER
+                    )
+                    
+                    day_cell = ft.Container(
+                        content=day_content,
+                        width=60,
+                        height=60,
+                        border_radius=5,
+                        bgcolor="#5D4037" if is_selected else "#F5F5F5" if is_past else None,
+                        on_click=None if is_past else lambda e, d=day: date_clicked(e, d),
+                        padding=10,
+                    )
+                    
+                    if is_selected:
+                        day_content.controls[0].color = "white"
+                
+                week_row.controls.append(day_cell)
+            calendar_column.controls.append(week_row)
+        
+        page.update()
+
+    def previous_month(e):
+        nonlocal current_display_date
+        first_day_of_current_month = today.replace(day=1)
+        first_day_of_target_month = (current_display_date.replace(day=1) - timedelta(days=1)).replace(day=1)
+        
+        if first_day_of_target_month >= first_day_of_current_month:
+            if current_display_date.month == 1:
+                current_display_date = current_display_date.replace(year=current_display_date.year - 1, month=12)
+            else:
+                current_display_date = current_display_date.replace(month=current_display_date.month - 1)
+            update_calendar()
+
+    def next_month(e):
+        nonlocal current_display_date
+        if current_display_date.month == 12:
+            current_display_date = current_display_date.replace(year=current_display_date.year + 1, month=1)
+        else:
+            current_display_date = current_display_date.replace(month=current_display_date.month + 1)
+        update_calendar()
+
+    def create_calendar():
+        calendar_column.controls = [
+            ft.Row(
+                controls=[
+                    ft.IconButton(
+                        icon=ft.icons.CHEVRON_LEFT,
+                        icon_size=24,
+                        icon_color="#000000",
+                        on_click=previous_month
+                    ),
+                    month_text,
+                    ft.IconButton(
+                        icon=ft.icons.CHEVRON_RIGHT,
+                        icon_size=24,
+                        icon_color="#000000",
+                        on_click=next_month
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+            ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ft.Text(
+                            day,
+                            size=14,
+                            weight=ft.FontWeight.W_400,
+                            color="#000000"
+                        ),
+                        width=60,
+                        height=40,
+                        alignment=ft.alignment.center
+                    )
+                    for day in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                ],
+            ),
+        ]
+        
+        update_calendar()
+        return calendar_column
 
     def time_slot_clicked(e, time_container):
-        # Reset all time slot colors
-        for slot in time_slots_grid.controls:
-            for container in slot.controls:
+        for row in time_slots_grid.controls:
+            for container in row.controls:
                 container.bgcolor = "white"
                 container.content.color = "black"
         
-        # Highlight selected time slot
-        time_container.bgcolor = "black"
+        time_container.bgcolor = "#5D4037"
         time_container.content.color = "white"
-        
-        # Update selected time text
-        selected_time.value = f"Time: {time_container.content.value}"
+        booking_details["time"] = time_container.content.value
         page.update()
 
-    time_slots_grid = ft.Column(spacing=5)
     def create_time_slots():
+        global time_slots_grid
+        time_slots_grid = ft.Column(spacing=10)
         times = [
             "11:30 am", "12:00 pm", "12:30 pm", "1:00 pm",
             "1:30 pm", "2:00 pm", "2:30 pm", "3:00 pm",
@@ -65,11 +234,11 @@ def main(page: ft.Page):
                 controls=[
                     ft.Container(
                         content=ft.Text(times[i], size=14),
-                        width=120,
-                        height=35,
-                        border=ft.border.all(1, "black"),
+                        width=125,  # Increased from 120
+                        height=50,  # Increased from 35
+                        border=ft.border.all(2, "#DEDEDE"),
                         border_radius=5,
-                        padding=5,
+                        padding=10,
                         alignment=ft.alignment.center,
                         bgcolor="white",
                         on_click=lambda e, t=times[i]: time_slot_clicked(e, e.control)
@@ -77,144 +246,35 @@ def main(page: ft.Page):
                 ],
                 spacing=10
             )
+            
             if i + 1 < len(times):
                 row.controls.append(
                     ft.Container(
                         content=ft.Text(times[i + 1], size=14),
-                        width=120,
-                        height=35,
-                        border=ft.border.all(1, "black"),
+                        width=125,  # Increased from 120
+                        height=50,  # Increased from 35
+                        border=ft.border.all(2, "#DEDEDE"),
                         border_radius=5,
-                        padding=5,
+                        padding=10,
                         alignment=ft.alignment.center,
                         bgcolor="white",
                         on_click=lambda e, t=times[i + 1]: time_slot_clicked(e, e.control)
                     )
                 )
+            
             time_slots_grid.controls.append(row)
+        
         return time_slots_grid
-
-    # Reference to month text for updating
-    month_text = ft.Text(
-        datetime.now().strftime("%B %Y"),
-        size=16,
-        weight=ft.FontWeight.W_500
-    )
-
-    # Reference to calendar grid for updating
-    calendar_column = ft.Column(spacing=5)
-
-    def update_calendar():
-        # Clear existing calendar rows (keep header row)
-        while len(calendar_column.controls) > 2:
-            calendar_column.controls.pop()
-
-        # Get calendar for current month
-        cal = calendar.monthcalendar(current_display_date.year, current_display_date.month)
-        
-        # Update month text
-        month_text.value = current_display_date.strftime("%B %Y")
-        
-        # Add new calendar rows
-        for week in cal:
-            week_row = ft.Row(spacing=0)
-            for day in week:
-                if day == 0:
-                    day_button = ft.Container(width=40, height=30)
-                else:
-                    day_button = ft.ElevatedButton(
-                        text=str(day),
-                        width=40,
-                        height=30,
-                        style=ft.ButtonStyle(
-                            padding=2,
-                            shape=ft.RoundedRectangleBorder(radius=5),
-                        ),
-                        on_click=lambda e, d=day: date_clicked(e, d)
-                    )
-                week_row.controls.append(day_button)
-            calendar_column.controls.append(week_row)
-        
-        page.update()
-
-    def previous_month(e):
-        nonlocal current_display_date
-        # Move to previous month
-        if current_display_date.month == 1:
-            current_display_date = current_display_date.replace(year=current_display_date.year - 1, month=12)
-        else:
-            current_display_date = current_display_date.replace(month=current_display_date.month - 1)
-        update_calendar()
-
-    def next_month(e):
-        nonlocal current_display_date
-        # Move to next month
-        if current_display_date.month == 12:
-            current_display_date = current_display_date.replace(year=current_display_date.year + 1, month=1)
-        else:
-            current_display_date = current_display_date.replace(month=current_display_date.month + 1)
-        update_calendar()
-
-    def create_calendar():
-        # Add header row with month and navigation
-        calendar_column.controls = [
-            ft.Row(
-                controls=[
-                    ft.IconButton(
-                        icon=ft.icons.CHEVRON_LEFT,
-                        icon_size=20,
-                        on_click=previous_month
-                    ),
-                    month_text,
-                    ft.IconButton(
-                        icon=ft.icons.CHEVRON_RIGHT,
-                        icon_size=20,
-                        on_click=next_month
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-            ft.Row(
-                controls=[
-                    ft.Text(
-                        day, 
-                        width=40, 
-                        text_align=ft.TextAlign.CENTER,
-                        size=14
-                    )
-                    for day in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-                ],
-            ),
-        ]
-        
-        # Add initial calendar
-        update_calendar()
-        
-        return calendar_column
-
-    def check_availability():
-        if selected_time.value != "Select a time":
-            page.show_snack_bar(
-                ft.SnackBar(
-                    content=ft.Text(f"Booking confirmed for {selected_date_text.value} at {selected_time.value.replace('Time: ', '')}")
-                )
-            )
-        else:
-            page.show_snack_bar(
-                ft.SnackBar(
-                    content=ft.Text("Please select a time slot")
-                )
-            )
 
     # Create main layout
     main_content = ft.Row(
         controls=[
-            # Left side - Calendar and Time slots
+            # Calendar section
             ft.Container(
                 content=ft.Column(
                     controls=[
                         ft.Text(
-                            "Select a Date and Time",
+                            "Select a Date",
                             size=20,
                             weight=ft.FontWeight.BOLD
                         ),
@@ -231,17 +291,32 @@ def main(page: ft.Page):
                             ],
                         ),
                         create_calendar(),
-                        ft.Divider(height=1),
-                        selected_date_text,
+                    ],
+                    spacing=20,
+                ),
+                padding=20,
+            ),
+            
+            ft.VerticalDivider(width=1, color="#DEDEDE"),
+            
+            ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(
+                            "Select Time",
+                            size=20,
+                            weight=ft.FontWeight.BOLD
+                        ),
                         create_time_slots(),
                     ],
-                    spacing=10,
+                    spacing=20,
                 ),
-                padding=10,
-                expand=True,
+                padding=20,
+                width=300,
             ),
-            ft.VerticalDivider(width=1),
-            # Right side - Booking Details
+            
+            ft.VerticalDivider(width=1, color="#DEDEDE"),
+            
             ft.Container(
                 content=ft.Column(
                     controls=[
@@ -250,32 +325,33 @@ def main(page: ft.Page):
                             size=20,
                             weight=ft.FontWeight.BOLD
                         ),
-                        ft.Column(
-                            controls=[
-                                ft.Text("Wash & Dry", size=16),
-                                ft.Text("1 hr", size=14),
-                                ft.Text("San Francisco", size=14),
-                                selected_time,
-                            ],
-                            spacing=5,
+                        ft.Container(
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text(booking_details["service"], size=16, weight=ft.FontWeight.W_500),
+                                    ft.Text(booking_details["duration"], size=14),
+                                    ft.Text(booking_details["location"], size=14),
+                                ],
+                                spacing=5,
+                            ),
+                            padding=ft.padding.only(top=10, bottom=20),
                         ),
                         ft.ElevatedButton(
                             "Next",
-                            bgcolor="black",
+                            bgcolor="#5D4037",
                             color="white",
                             width=200,
-                            height=35,
-                            on_click=lambda e: check_availability()
+                            height=40,
+                            on_click=navigate_to_next_page
                         ),
                     ],
                     spacing=10,
                 ),
-                padding=10,
+                padding=20,
                 width=250,
             ),
         ],
         spacing=0,
-        height=600,
     )
 
     page.add(main_content)
